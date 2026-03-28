@@ -136,4 +136,4 @@ const AdmZip = require('adm-zip');
   }
 
   await browser.close();
-})();ده سليم
+})();
