@@ -14,6 +14,7 @@ const AdmZip = require('adm-zip');
     ]
   });
 
+  // قراءة الخطوط وتحويلها لـ Base64
   const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
   const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
   const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
@@ -38,11 +39,12 @@ const AdmZip = require('adm-zip');
     </style>
   `;
 
-  // الحيلة السحرية لضبط إحداثيات الكاميرا مع العربي
+  // الحيلة السحرية لضبط الإحداثيات مع جعل الارتفاع ديناميكي (يأخذ حجم المحتوى فقط)
   const rtlFixStyle = `
     <style>
       /* إجبار الصفحة تبدأ من الشمال عشان الكاميرا متصورش الهوا */
       html { direction: ltr !important; background: #030712 !important; }
+      
       /* إرجاع المحتوى لليمين وتثبيته في زاوية الكاميرا بالقوة */
       body { 
         direction: rtl !important; 
@@ -50,8 +52,10 @@ const AdmZip = require('adm-zip');
         top: 0 !important; 
         left: 0 !important; 
         margin: 0 !important; 
-        width: 1080px !important; 
-        height: 1350px !important; 
+        width: 1080px !important; /* تثبيت العرض */
+        height: max-content !important; /* إجبار الارتفاع على احتواء المحتوى فقط */
+        min-height: 10px !important;
+        overflow: visible !important; /* إلغاء القص الثابت من ملفاتك الأصلية */
       }
     </style>
   `;
@@ -72,6 +76,8 @@ const AdmZip = require('adm-zip');
 
     for (const file of htmlFiles) {
       const page = await browser.newPage();
+      
+      // نحدد عرض مبدئي
       await page.setViewport({ width: 1080, height: 1350 });
 
       const filePath = path.resolve(extractDir, file);
@@ -96,16 +102,30 @@ const AdmZip = require('adm-zip');
 
       await new Promise(r => setTimeout(r, 1000));
 
+      // 1. حساب الأبعاد الفعلية للمحتوى بعد الرندر
+      const dimensions = await page.evaluate(() => {
+        return {
+          width: 1080, // العرض ثابت لسلايدز إنستجرام
+          height: document.body.scrollHeight // الارتفاع يتحدد بناءً على المحتوى الفعلي
+        };
+      });
+
+      // 2. ضبط الكاميرا (Viewport) لتتطابق تماماً مع أبعاد المحتوى
+      await page.setViewport({
+        width: dimensions.width,
+        height: dimensions.height
+      });
+
       const name = path.basename(file, '.html');
       
-      // نرجع للـ screenshot العادية بس بأبعاد ثابتة ومقصوصة (Clip)
+      // 3. التقاط الصورة بالأبعاد الديناميكية الجديدة
       await page.screenshot({
         path: `${outputDir}/${name}.png`,
         omitBackground: false,
-        clip: { x: 0, y: 0, width: 1080, height: 1350 }
+        clip: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }
       });
 
-      console.log(`✅ ${zipName}/${file} → Captured successfully`);
+      console.log(`✅ ${zipName}/${file} → Captured dynamically: ${dimensions.width}x${dimensions.height}`);
       await page.close();
     }
 
