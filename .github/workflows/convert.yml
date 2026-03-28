@@ -33,6 +33,12 @@ jobs:
         with:
           name: png-zips
           path: output/*.zip
+          
+      - name: Send ZIP back to n8n
+        run: |
+          ZIP_FILE=$(ls output/*.zip | head -n 1)
+          curl -X POST -F "data=@$ZIP_FILE" https://two-beans-raise.loca.lt/webhook-test/6193a5a3-43be-4258-9fad-b8d5702a2d8e
+          
 
       - name: Cleanup input
         run: |
