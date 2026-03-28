@@ -35,16 +35,15 @@ jobs:
           
       - name: Save Output to Repo & Cleanup
         run: |
-          # إعداد حساب البوت الخاص بجيت هاب عشان يعمل الـ Commit
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # إجبار جيت هاب إنه يضيف أي ملف ZIP جديد في فولدر output
           git add output/*.zip --force
           
-          # مسح ملف الـ ZIP القديم من فولدر input عشان الريبو ميكبرش على الفاضي
+          # مسح ملف الـ ZIP القديم من فولدر input 
           git rm input/*.zip || true
           
-          # التأكد إن فيه تغييرات حصلت، لو فيه بيعمل Commit و Push
-          git diff --staged --quiet || (git commit -m "✅ Images converted and ZIP generated" && git push)
+          # عمل Commit وسحب التحديثات (Pull) لو فيه، وبعدين الرفع (Push)
+          git diff --staged --quiet || (git commit -m "✅ Images converted and ZIP generated" && git pull --rebase origin main && git push)
           
