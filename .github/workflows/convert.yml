@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'input/**'
+  workflow_dispatch: # للسماح بتشغيل الأكشن برمجياً عبر الـ API
 
 jobs:
   convert:
@@ -22,7 +23,8 @@ jobs:
       - name: Install Arabic Fonts & Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra
+          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra fonts-noto-ui-arabic
+
       - run: npm install puppeteer adm-zip
 
       - run: node convert.js
@@ -36,6 +38,6 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git rm input/*.zip
-          git commit -m "🧹 cleanup input"
-          git push
+          git rm input/*.zip || true
+          git diff --staged --quiet || (git commit -m "🧹 cleanup input" && git push)
+          
