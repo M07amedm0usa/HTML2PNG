@@ -42,8 +42,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إضافة ملفات الـ ZIP الناتجة بقوة
-          git add output/*.zip --force
+          # التعديل السحري: رفع كل محتويات فولدر output (الـ ZIP والصور كمان)
+          git add output/* --force
           
           # تنظيف فولدر الـ input عشان ميتراكمش فيه ملفات قديمة
           git rm input/*.zip --ignore-unmatch || true
