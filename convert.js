@@ -4,6 +4,7 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 
 (async () => {
+  // تشغيل المتصفح بإعدادات مناسبة لسيرفرات لينكس
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -19,7 +20,7 @@ const AdmZip = require('adm-zip');
   const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
   const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
 
-  // تجهيز ستايل الخطوط (تم تعديل وزن الخط البولد لـ 700)
+  // تجهيز ستايل الخطوط
   const fontStyle = `
     <style>
       @font-face {
@@ -47,6 +48,7 @@ const AdmZip = require('adm-zip');
     const extractDir = `temp/${zipName}`;
     const outputDir = `output/${zipName}`;
 
+    // فك ضغط الملف
     const zip = new AdmZip(`input/${zipFile}`);
     zip.extractAllTo(extractDir, true);
 
@@ -56,57 +58,51 @@ const AdmZip = require('adm-zip');
 
     for (const file of htmlFiles) {
       const page = await browser.newPage();
+      
+      // تحديد أبعاد مبدئية
       await page.setViewport({ width: 1080, height: 1350 });
 
-      // تفعيل اعتراض الطلبات لمنع تحميل خطوط جوجل الخارجية
-      await page.setRequestInterception(true);
-      page.on('request', (req) => {
-        if (req.url().includes('fonts.googleapis.com') || req.url().includes('fonts.gstatic.com')) {
-          req.abort(); 
-        } else {
-          req.continue();
-        }
-      });
-
-      // فتح الملف كمسار محلي لضمان تحميل الـ CSS والصور المرفقة
       const filePath = path.resolve(extractDir, file);
+      
+      // 1. قراءة محتوى الـ HTML كـ Text
+      let htmlContent = fs.readFileSync(filePath, 'utf8');
+
+      // 2. إزالة طلبات خطوط جوجل لتسريع التحميل ومنع التعارض
+      htmlContent = htmlContent.replace(/<link[^>]*fonts\.(googleapis|gstatic)\.com[^>]*>/gi, '');
+
+      // 3. إضافة خطوط عربية بديلة (Fallback) لضمان عدم اختفاء النص
+      htmlContent = htmlContent.replace(/font-family:\s*'Cairo'/g, "font-family: 'Cairo', 'KacstOne', 'Noto Sans Arabic'");
+
+      // 4. حقن الخطوط الـ Base64 جوه الـ HTML نفسه قبل قفلة الـ head
+      htmlContent = htmlContent.replace(/<\/head>/i, `${fontStyle}\n</head>`);
+
+      // 5. حفظ الملف بالتعديلات الجديدة عشان المتصفح يقرأه جاهز
+      fs.writeFileSync(filePath, htmlContent, 'utf8');
+
+      // 6. فتح الملف المحلي بعد التعديل
       await page.goto(`file://${filePath}`, {
         waitUntil: 'networkidle0',
         timeout: 30000
       });
 
-      // حقن كود الخطوط
-      await page.addStyleTag({ content: fontStyle });
-
-      // التأكد من تطبيق الخطوط على الـ DOM
-      await page.evaluate(async () => {
-        await document.fonts.ready;
-      });
+      // إعطاء وقت إضافي بسيط للتأكد من تطبيق الخطوط (Rendering)
       await new Promise(r => setTimeout(r, 1000));
 
-      // حساب الأبعاد الديناميكية
-      const dimensions = await page.evaluate(() => {
-        const style = window.getComputedStyle(document.body);
-        let width = parseInt(style.width);
-        let height = parseInt(style.height);
-        if (!width || width < 100) width = document.body.scrollWidth;
-        if (!height || height < 100) height = document.body.scrollHeight;
-        return { width, height };
-      });
-
-      await page.setViewport({
-        width: dimensions.width,
-        height: dimensions.height
-      });
-
+      // 7. التقاط عنصر الـ body نفسه مباشرة عشان نتفادى مشاكل إحداثيات الـ RTL
+      const bodyHandle = await page.$('body');
       const name = path.basename(file, '.html');
-      await page.screenshot({
-        path: `${outputDir}/${name}.png`,
-        omitBackground: false,
-        clip: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }
-      });
+      
+      if (bodyHandle) {
+        await bodyHandle.screenshot({
+          path: `${outputDir}/${name}.png`,
+          omitBackground: false
+        });
+        console.log(`✅ ${zipName}/${file} → Captured via Body Handle`);
+        await bodyHandle.dispose(); // تفريغ الذاكرة
+      } else {
+        console.log(`❌ ${zipName}/${file} → Body not found!`);
+      }
 
-      console.log(`✅ ${zipName}/${file} → ${dimensions.width}x${dimensions.height}`);
       await page.close();
     }
 
@@ -114,7 +110,7 @@ const AdmZip = require('adm-zip');
     const outZip = new AdmZip();
     outZip.addLocalFolder(outputDir);
     outZip.writeZip(`output/${zipName}.zip`);
-    console.log(`📦 ${zipName}.zip جاهز`);
+    console.log(`📦 ${zipName}.zip جاهز في مجلد output`);
   }
 
   await browser.close();
