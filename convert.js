@@ -5,8 +5,38 @@ const AdmZip = require('adm-zip');
 
 (async () => {
   const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--font-render-hinting=none'
+    ]
   });
+
+  const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
+  const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
+  const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
+
+  const fontStyle = `
+    <style>
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoRegB64}') format('truetype');
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype');
+        font-weight: 600 900;
+      }
+      @font-face {
+        font-family: 'Fira Code';
+        src: url('data:font/ttf;base64,${firaB64}') format('truetype');
+        font-weight: 100 900;
+      }
+    </style>
+  `;
 
   const zipFiles = fs.readdirSync('input').filter(f => f.endsWith('.zip'));
 
@@ -26,12 +56,18 @@ const AdmZip = require('adm-zip');
       const page = await browser.newPage();
       await page.setViewport({ width: 1080, height: 1350 });
 
-      const filePath = path.resolve(`${extractDir}/${file}`);
-      await page.goto(`file://${filePath}`, {
-        waitUntil: 'networkidle0',
-        timeout: 60000
+      let html = fs.readFileSync(`${extractDir}/${file}`, 'utf8');
+      html = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/g, '');
+      html = html.replace('<head>', `<head>${fontStyle}`);
+
+      await page.setContent(html, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
       });
 
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+      });
       await new Promise(r => setTimeout(r, 1000));
 
       const dimensions = await page.evaluate(() => {
@@ -51,6 +87,7 @@ const AdmZip = require('adm-zip');
       const name = path.basename(file, '.html');
       await page.screenshot({
         path: `${outputDir}/${name}.png`,
+        omitBackground: false,
         clip: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }
       });
 
