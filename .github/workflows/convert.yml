@@ -10,40 +10,58 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # مهمة جداً عشان الـ Action يقدر يرفع ملفات للريبو
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # عشان يجيب تاريخ الريبو كامل ويتجنب مشاكل الـ Push
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install Arabic Fonts & Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra
+          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra fonts-vazirmatn
           npm install puppeteer adm-zip
 
-      - run: node convert.js
+      - name: Run Conversion Script
+        run: node convert.js
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: png-zips
-          path: output/*.zip
-          
-      - name: Save Output to Repo & Cleanup
+      - name: Check Generated Files
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Listing files in output directory:"
+          ls -lh output/
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إجبار جيت هاب إنه يضيف أي ملف ZIP جديد في فولدر output
+          # إضافة ملفات الـ ZIP الناتجة بقوة
           git add output/*.zip --force
           
-          # مسح ملف الـ ZIP القديم من فولدر input 
-          git rm input/*.zip || true
+          # تنظيف فولدر الـ input عشان ميتراكمش فيه ملفات قديمة
+          git rm input/*.zip --ignore-unmatch || true
           
-          # عمل Commit وسحب التحديثات (Pull) لو فيه، وبعدين الرفع (Push)
-          git diff --staged --quiet || (git commit -m "✅ Images converted and ZIP generated" && git pull --rebase origin main && git push)
+          # التحقق إذا كان هناك تغييرات فعلاً قبل الـ Commit
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
+            # سحب أي تغييرات خارجية (Rebase) لضمان نظافة الـ History
+            git pull --rebase origin main
+            git push origin main
+          else
+            echo "No changes to commit, skipping push."
+          fi
+
+      - name: Upload Artifact (Optional Backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-carousels
+          path: output/*.zip
+          retention-days: 1
           
