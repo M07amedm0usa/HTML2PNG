@@ -8,6 +8,30 @@ const AdmZip = require('adm-zip');
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
+  const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
+  const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
+  const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
+
+  const fontStyle = `
+    <style>
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoRegB64}') format('truetype');
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype');
+        font-weight: 600 900;
+      }
+      @font-face {
+        font-family: 'Fira Code';
+        src: url('data:font/ttf;base64,${firaB64}') format('truetype');
+        font-weight: 100 900;
+      }
+    </style>
+  `;
+
   const zipFiles = fs.readdirSync('input').filter(f => f.endsWith('.zip'));
 
   for (const zipFile of zipFiles) {
@@ -24,26 +48,26 @@ const AdmZip = require('adm-zip');
 
     for (const file of htmlFiles) {
       const page = await browser.newPage();
+      await page.setViewport({ width: 1080, height: 1350 });
 
-      await page.setViewport({ width: 1080, height: 1920 });
+      let html = fs.readFileSync(`${extractDir}/${file}`, 'utf8');
+      html = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/g, '');
+      html = html.replace('</head>', `${fontStyle}</head>`);
 
-      const html = fs.readFileSync(`${extractDir}/${file}`, 'utf8');
-      await page.setContent(html, { 
-        waitUntil: 'networkidle0',
-        timeout: 30000 
+      await page.setContent(html, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
       });
 
-      // استنى عشان الـ fonts تتحمل
-      await new Promise(r => setTimeout(r, 1000));
+      await page.evaluateHandle('document.fonts.ready');
+      await new Promise(r => setTimeout(r, 500));
 
       const dimensions = await page.evaluate(() => {
-        const body = document.body;
-        const width = body.scrollWidth;
-        const children = body.children;
-        const lastChild = children[children.length - 1];
-        const rect = lastChild.getBoundingClientRect();
-        const height = Math.ceil(rect.bottom) + 20;
-        return { width, height };
+        const style = window.getComputedStyle(document.body);
+        return {
+          width: parseInt(style.width),
+          height: parseInt(style.height)
+        };
       });
 
       await page.setViewport({
@@ -54,12 +78,7 @@ const AdmZip = require('adm-zip');
       const name = path.basename(file, '.html');
       await page.screenshot({
         path: `${outputDir}/${name}.png`,
-        clip: {
-          x: 0,
-          y: 0,
-          width: dimensions.width,
-          height: dimensions.height
-        }
+        clip: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }
       });
 
       console.log(`✅ ${zipName}/${file} → ${dimensions.width}x${dimensions.height}`);
