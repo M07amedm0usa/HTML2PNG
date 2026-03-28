@@ -4,23 +4,20 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 
 (async () => {
-  // تشغيل المتصفح بإعدادات مناسبة لسيرفرات لينكس
+  // تفعيل المحرك الجديد الخاص بـ Chrome لتفادي بجات الـ RTL القديمة
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new', 
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--font-render-hinting=none'
+      '--disable-dev-shm-usage'
     ]
   });
 
-  // قراءة الخطوط وتحويلها لـ Base64
   const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
   const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
   const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
 
-  // تجهيز ستايل الخطوط
   const fontStyle = `
     <style>
       @font-face {
@@ -41,6 +38,24 @@ const AdmZip = require('adm-zip');
     </style>
   `;
 
+  // الحيلة السحرية لضبط إحداثيات الكاميرا مع العربي
+  const rtlFixStyle = `
+    <style>
+      /* إجبار الصفحة تبدأ من الشمال عشان الكاميرا متصورش الهوا */
+      html { direction: ltr !important; background: #030712 !important; }
+      /* إرجاع المحتوى لليمين وتثبيته في زاوية الكاميرا بالقوة */
+      body { 
+        direction: rtl !important; 
+        position: absolute !important; 
+        top: 0 !important; 
+        left: 0 !important; 
+        margin: 0 !important; 
+        width: 1080px !important; 
+        height: 1350px !important; 
+      }
+    </style>
+  `;
+
   const zipFiles = fs.readdirSync('input').filter(f => f.endsWith('.zip'));
 
   for (const zipFile of zipFiles) {
@@ -48,7 +63,6 @@ const AdmZip = require('adm-zip');
     const extractDir = `temp/${zipName}`;
     const outputDir = `output/${zipName}`;
 
-    // فك ضغط الملف
     const zip = new AdmZip(`input/${zipFile}`);
     zip.extractAllTo(extractDir, true);
 
@@ -58,55 +72,43 @@ const AdmZip = require('adm-zip');
 
     for (const file of htmlFiles) {
       const page = await browser.newPage();
-      
-      // تحديد أبعاد مبدئية
       await page.setViewport({ width: 1080, height: 1350 });
 
       const filePath = path.resolve(extractDir, file);
-      
-      // 1. قراءة محتوى الـ HTML كـ Text
       let htmlContent = fs.readFileSync(filePath, 'utf8');
 
-      // 2. إزالة طلبات خطوط جوجل لتسريع التحميل ومنع التعارض
       htmlContent = htmlContent.replace(/<link[^>]*fonts\.(googleapis|gstatic)\.com[^>]*>/gi, '');
+      
+      // دمج ستايل الخطوط + ستايل إصلاح الـ RTL قبل قفلة الـ head
+      htmlContent = htmlContent.replace(/<\/head>/i, `${fontStyle}\n${rtlFixStyle}\n</head>`);
 
-      // 3. إضافة خطوط عربية بديلة (Fallback) لضمان عدم اختفاء النص
-      htmlContent = htmlContent.replace(/font-family:\s*'Cairo'/g, "font-family: 'Cairo', 'KacstOne', 'Noto Sans Arabic'");
+      // لو ملف عربي، نمسح dir="rtl" من الـ html عشان الـ CSS الجديد يشتغل صح
+      if (file.includes('_ar_')) {
+        htmlContent = htmlContent.replace(/dir=["']rtl["']/gi, '');
+      }
 
-      // 4. حقن الخطوط الـ Base64 جوه الـ HTML نفسه قبل قفلة الـ head
-      htmlContent = htmlContent.replace(/<\/head>/i, `${fontStyle}\n</head>`);
-
-      // 5. حفظ الملف بالتعديلات الجديدة عشان المتصفح يقرأه جاهز
       fs.writeFileSync(filePath, htmlContent, 'utf8');
 
-      // 6. فتح الملف المحلي بعد التعديل
       await page.goto(`file://${filePath}`, {
         waitUntil: 'networkidle0',
         timeout: 30000
       });
 
-      // إعطاء وقت إضافي بسيط للتأكد من تطبيق الخطوط (Rendering)
       await new Promise(r => setTimeout(r, 1000));
 
-      // 7. التقاط عنصر الـ body نفسه مباشرة عشان نتفادى مشاكل إحداثيات الـ RTL
-      const bodyHandle = await page.$('body');
       const name = path.basename(file, '.html');
       
-      if (bodyHandle) {
-        await bodyHandle.screenshot({
-          path: `${outputDir}/${name}.png`,
-          omitBackground: false
-        });
-        console.log(`✅ ${zipName}/${file} → Captured via Body Handle`);
-        await bodyHandle.dispose(); // تفريغ الذاكرة
-      } else {
-        console.log(`❌ ${zipName}/${file} → Body not found!`);
-      }
+      // نرجع للـ screenshot العادية بس بأبعاد ثابتة ومقصوصة (Clip)
+      await page.screenshot({
+        path: `${outputDir}/${name}.png`,
+        omitBackground: false,
+        clip: { x: 0, y: 0, width: 1080, height: 1350 }
+      });
 
+      console.log(`✅ ${zipName}/${file} → Captured successfully`);
       await page.close();
     }
 
-    // ضغط الصور الناتجة
     const outZip = new AdmZip();
     outZip.addLocalFolder(outputDir);
     outZip.writeZip(`output/${zipName}.zip`);
