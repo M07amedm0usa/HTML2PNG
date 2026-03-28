@@ -8,30 +8,6 @@ const AdmZip = require('adm-zip');
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
-  const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
-  const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
-  const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
-
-  const fontStyle = `
-    <style>
-      @font-face {
-        font-family: 'Cairo';
-        src: url('data:font/ttf;base64,${cairoRegB64}') format('truetype');
-        font-weight: 400;
-      }
-      @font-face {
-        font-family: 'Cairo';
-        src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype');
-        font-weight: 600 900;
-      }
-      @font-face {
-        font-family: 'Fira Code';
-        src: url('data:font/ttf;base64,${firaB64}') format('truetype');
-        font-weight: 100 900;
-      }
-    </style>
-  `;
-
   const zipFiles = fs.readdirSync('input').filter(f => f.endsWith('.zip'));
 
   for (const zipFile of zipFiles) {
@@ -50,24 +26,21 @@ const AdmZip = require('adm-zip');
       const page = await browser.newPage();
       await page.setViewport({ width: 1080, height: 1350 });
 
-      let html = fs.readFileSync(`${extractDir}/${file}`, 'utf8');
-      html = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/g, '');
-      html = html.replace('</head>', `${fontStyle}</head>`);
-
-      await page.setContent(html, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
+      const filePath = path.resolve(`${extractDir}/${file}`);
+      await page.goto(`file://${filePath}`, {
+        waitUntil: 'networkidle0',
+        timeout: 60000
       });
 
-      await page.evaluateHandle('document.fonts.ready');
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 1000));
 
       const dimensions = await page.evaluate(() => {
         const style = window.getComputedStyle(document.body);
-        return {
-          width: parseInt(style.width),
-          height: parseInt(style.height)
-        };
+        let width = parseInt(style.width);
+        let height = parseInt(style.height);
+        if (!width || width < 100) width = document.body.scrollWidth;
+        if (!height || height < 100) height = document.body.scrollHeight;
+        return { width, height };
       });
 
       await page.setViewport({
