@@ -14,10 +14,12 @@ const AdmZip = require('adm-zip');
     ]
   });
 
+  // قراءة الخطوط وتحويلها لـ Base64
   const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
   const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
   const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
 
+  // تجهيز ستايل الخطوط (تم تعديل وزن الخط البولد لـ 700)
   const fontStyle = `
     <style>
       @font-face {
@@ -28,7 +30,7 @@ const AdmZip = require('adm-zip');
       @font-face {
         font-family: 'Cairo';
         src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype');
-        font-weight: 600 900;
+        font-weight: 700; 
       }
       @font-face {
         font-family: 'Fira Code';
@@ -56,20 +58,33 @@ const AdmZip = require('adm-zip');
       const page = await browser.newPage();
       await page.setViewport({ width: 1080, height: 1350 });
 
-      let html = fs.readFileSync(`${extractDir}/${file}`, 'utf8');
-      html = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/g, '');
-      html = html.replace('<head>', `<head>${fontStyle}`);
+      // تفعيل اعتراض الطلبات لمنع تحميل خطوط جوجل الخارجية
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (req.url().includes('fonts.googleapis.com') || req.url().includes('fonts.gstatic.com')) {
+          req.abort(); 
+        } else {
+          req.continue();
+        }
+      });
 
-      await page.setContent(html, {
-        waitUntil: 'domcontentloaded',
+      // فتح الملف كمسار محلي لضمان تحميل الـ CSS والصور المرفقة
+      const filePath = path.resolve(extractDir, file);
+      await page.goto(`file://${filePath}`, {
+        waitUntil: 'networkidle0',
         timeout: 30000
       });
 
+      // حقن كود الخطوط
+      await page.addStyleTag({ content: fontStyle });
+
+      // التأكد من تطبيق الخطوط على الـ DOM
       await page.evaluate(async () => {
         await document.fonts.ready;
       });
       await new Promise(r => setTimeout(r, 1000));
 
+      // حساب الأبعاد الديناميكية
       const dimensions = await page.evaluate(() => {
         const style = window.getComputedStyle(document.body);
         let width = parseInt(style.width);
@@ -95,6 +110,7 @@ const AdmZip = require('adm-zip');
       await page.close();
     }
 
+    // ضغط الصور الناتجة
     const outZip = new AdmZip();
     outZip.addLocalFolder(outputDir);
     outZip.writeZip(`output/${zipName}.zip`);
