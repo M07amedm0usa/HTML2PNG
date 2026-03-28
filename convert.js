@@ -1,113 +1,139 @@
-const puppeteer = require('puppeteer');
+Const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
 (async () => {
-  // التأكد من وجود المجلدات الضرورية
-  if (!fs.existsSync('temp')) fs.mkdirSync('temp');
-  if (!fs.existsSync('output')) fs.mkdirSync('output');
-
+  // تفعيل المحرك الجديد الخاص بـ Chrome لتفادي بجات الـ RTL القديمة
   const browser = await puppeteer.launch({
-    headless: 'new',
+    headless: 'new', 
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--font-render-hinting=none' // لتحسين جودة الخطوط العربية
+      '--disable-dev-shm-usage'
     ]
   });
 
-  // قراءة الخطوط (تأكد أن المسار fonts/ موجود في الريبو)
-  let fontStyle = '';
-  try {
-    const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
-    const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
-    const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
-    
-    fontStyle = `
-      <style>
-        @font-face { font-family: 'Cairo'; src: url('data:font/ttf;base64,${cairoRegB64}') format('truetype'); font-weight: 400; }
-        @font-face { font-family: 'Cairo'; src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype'); font-weight: 700; }
-        @font-face { font-family: 'Fira Code'; src: url('data:font/ttf;base64,${firaB64}') format('truetype'); }
-      </style>`;
-  } catch (e) {
-    console.log("⚠️ Fonts not found, proceeding with system fonts.");
-  }
+  // قراءة الخطوط وتحويلها لـ Base64
+  const cairoRegB64 = fs.readFileSync('fonts/Cairo-Regular.ttf').toString('base64');
+  const cairoBoldB64 = fs.readFileSync('fonts/Cairo-Bold.ttf').toString('base64');
+  const firaB64 = fs.readFileSync('fonts/FiraCode.ttf').toString('base64');
 
+  const fontStyle = `
+    <style>
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoRegB64}') format('truetype');
+        font-weight: 400;
+      }
+      @font-face {
+        font-family: 'Cairo';
+        src: url('data:font/ttf;base64,${cairoBoldB64}') format('truetype');
+        font-weight: 700; 
+      }
+      @font-face {
+        font-family: 'Fira Code';
+        src: url('data:font/ttf;base64,${firaB64}') format('truetype');
+        font-weight: 100 900;
+      }
+    </style>
+  `;
+
+  // الحيلة السحرية لضبط الإحداثيات مع جعل الارتفاع ديناميكي (يأخذ حجم المحتوى فقط)
   const rtlFixStyle = `
     <style>
+      /* إجبار الصفحة تبدأ من الشمال عشان الكاميرا متصورش الهوا */
       html { direction: ltr !important; background: #030712 !important; }
+      
+      /* إرجاع المحتوى لليمين وتثبيته في زاوية الكاميرا بالقوة */
       body { 
-        direction: rtl !important; position: absolute !important; 
-        top: 0 !important; left: 0 !important; margin: 0 !important; 
-        width: 1080px !important; height: auto !important;
-        min-height: 100vh; overflow: visible !important;
+        direction: rtl !important; 
+        position: absolute !important; 
+        top: 0 !important; 
+        left: 0 !important; 
+        margin: 0 !important; 
+        width: 1080px !important; /* تثبيت العرض */
+        height: max-content !important; /* إجبار الارتفاع على احتواء المحتوى فقط */
+        min-height: 10px !important;
+        overflow: visible !important; /* إلغاء القص الثابت من ملفاتك الأصلية */
       }
-    </style>`;
+    </style>
+  `;
 
   const zipFiles = fs.readdirSync('input').filter(f => f.endsWith('.zip'));
 
   for (const zipFile of zipFiles) {
     const zipName = path.basename(zipFile, '.zip');
-    const extractDir = path.join('temp', zipName);
-    const outputImagesDir = path.join('temp', `${zipName}_pngs`);
+    const extractDir = `temp/${zipName}`;
+    const outputDir = `output/${zipName}`;
 
-    // فك الضغط
-    const zip = new AdmZip(path.join('input', zipFile));
+    const zip = new AdmZip(`input/${zipFile}`);
     zip.extractAllTo(extractDir, true);
 
-    if (!fs.existsSync(outputImagesDir)) fs.mkdirSync(outputImagesDir, { recursive: true });
+    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
     const htmlFiles = fs.readdirSync(extractDir).filter(f => f.endsWith('.html'));
 
     for (const file of htmlFiles) {
       const page = await browser.newPage();
+      
+      // نحدد عرض مبدئي
       await page.setViewport({ width: 1080, height: 1350 });
 
       const filePath = path.resolve(extractDir, file);
       let htmlContent = fs.readFileSync(filePath, 'utf8');
 
-      // دمج الستايلات
+      htmlContent = htmlContent.replace(/<link[^>]*fonts\.(googleapis|gstatic)\.com[^>]*>/gi, '');
+      
+      // دمج ستايل الخطوط + ستايل إصلاح الـ RTL قبل قفلة الـ head
       htmlContent = htmlContent.replace(/<\/head>/i, `${fontStyle}\n${rtlFixStyle}\n</head>`);
-      
-      // إصلاح الـ RTL (مهم جداً للـ Chromium الجديد)
-      htmlContent = htmlContent.replace(/dir=["']rtl["']/gi, '');
-      
+
+      // لو ملف عربي، نمسح dir="rtl" من الـ html عشان الـ CSS الجديد يشتغل صح
+      if (file.includes('_ar_')) {
+        htmlContent = htmlContent.replace(/dir=["']rtl["']/gi, '');
+      }
+
       fs.writeFileSync(filePath, htmlContent, 'utf8');
 
-      await page.goto(`file://${filePath}`, { waitUntil: 'networkidle0' });
-      await new Promise(r => setTimeout(r, 500)); // وقت كافٍ للـ Fonts
-
-      const dimensions = await page.evaluate(() => ({
-        width: 1080,
-        height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, 10)
-      }));
-
-      await page.setViewport(dimensions);
-      const name = path.basename(file, '.html');
-      
-      await page.screenshot({
-        path: path.join(outputImagesDir, `${name}.png`),
-        fullPage: true // أفضل من الـ clip اليدوي في الحالات الديناميكية
+      await page.goto(`file://${filePath}`, {
+        waitUntil: 'networkidle0',
+        timeout: 30000
       });
 
-      console.log(`✅ Captured: ${name}.png (${dimensions.height}px height)`);
+      await new Promise(r => setTimeout(r, 1000));
+
+      // 1. حساب الأبعاد الفعلية للمحتوى بعد الرندر
+      const dimensions = await page.evaluate(() => {
+        return {
+          width: 1080, // العرض ثابت لسلايدز إنستجرام
+          height: document.body.scrollHeight // الارتفاع يتحدد بناءً على المحتوى الفعلي
+        };
+      });
+
+      // 2. ضبط الكاميرا (Viewport) لتتطابق تماماً مع أبعاد المحتوى
+      await page.setViewport({
+        width: dimensions.width,
+        height: dimensions.height
+      });
+
+      const name = path.basename(file, '.html');
+      
+      // 3. التقاط الصورة بالأبعاد الديناميكية الجديدة
+      await page.screenshot({
+        path: `${outputDir}/${name}.png`,
+        omitBackground: false,
+        clip: { x: 0, y: 0, width: dimensions.width, height: dimensions.height }
+      });
+
+      console.log(`✅ ${zipName}/${file} → Captured dynamically: ${dimensions.width}x${dimensions.height}`);
       await page.close();
     }
 
-    // ضغط الصور الناتجة فقط
     const outZip = new AdmZip();
-    outZip.addLocalFolder(outputImagesDir);
-    const finalZipPath = path.join('output', `${zipName}.zip`);
-    outZip.writeZip(finalZipPath);
-    
-    console.log(`📦 Generated ZIP: ${finalZipPath}`);
-    
-    // تنظيف المجلدات المؤقتة لتوفير المساحة
-    fs.rmSync(extractDir, { recursive: true, force: true });
-    fs.rmSync(outputImagesDir, { recursive: true, force: true });
+    outZip.addLocalFolder(outputDir);
+    outZip.writeZip(`output/${zipName}.zip`);
+    console.log(`📦 ${zipName}.zip جاهز في مجلد output`);
   }
 
   await browser.close();
-})();
+})();ده سليم
