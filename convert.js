@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer'); // تم التعديل لـ const سمول
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -133,7 +133,13 @@ const AdmZip = require('adm-zip');
     outZip.addLocalFolder(outputDir);
     outZip.writeZip(`output/${zipName}.zip`);
     console.log(`📦 ${zipName}.zip جاهز في مجلد output`);
+    
+    // إضافة بسيطة: مسح ملفات الـ HTML المفكوكة عشان جيت هاب ميرفعهاش، لكن الصور الـ PNG هتفضل زي ما هي!
+    if (fs.existsSync(extractDir)) {
+      fs.rmSync(extractDir, { recursive: true, force: true });
+    }
   }
 
   await browser.close();
 })();
+ 
