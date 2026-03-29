@@ -10,13 +10,13 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # مهمة جداً عشان الـ Action يقدر يرفع ملفات للريبو
+      contents: write 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # عشان يجيب تاريخ الريبو كامل ويتجنب مشاكل الـ Push
+          fetch-depth: 0 # مهم جداً عشان الـ rebase يشتغل صح
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,25 +35,31 @@ jobs:
       - name: Check Generated Files
         run: |
           echo "Listing files in output directory:"
-          ls -lh output/
+          ls -lh output/ || echo "Output directory is empty!"
 
       - name: Commit and Push Changes
         run: |
+          # إعداد بيانات البوت
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # التعديل السحري: رفع كل محتويات فولدر output (الـ ZIP والصور كمان)
+          # إضافة الملفات الناتجة (الصور والـ ZIP)
           git add output/* --force
           
-          # تنظيف فولدر الـ input عشان ميتراكمش فيه ملفات قديمة
+          # تنظيف ملفات الـ input
           git rm input/*.zip --ignore-unmatch || true
           
-          # التحقق إذا كان هناك تغييرات فعلاً قبل الـ Commit
+          # التحقق من وجود تغييرات
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
-            # سحب أي تغييرات خارجية (Rebase) لضمان نظافة الـ History
+            
+            # --- السحر هنا ---
+            # سحب أي تغييرات حصلت في الريبو (زي مسح الصور القديمة اللي n8n عمله)
+            # ووضع التغييرات الجديدة للأكشن "فوقيها" عشان نتجنب الـ Conflict
             git pull --rebase origin main
-            git push origin main
+            
+            # محاولة الرفع، وإذا فشل يعيد المحاولة مرة واحدة بعد rebase أخير
+            git push origin main || (git pull --rebase origin main && git push origin main)
           else
             echo "No changes to commit, skipping push."
           fi
@@ -64,4 +70,3 @@ jobs:
           name: generated-carousels
           path: output/*.zip
           retention-days: 1
-          
