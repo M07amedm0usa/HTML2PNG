@@ -39,22 +39,20 @@ jobs:
           echo "Listing files in output directory:"
           ls -R output/ # الـ -R هتخلينا نشوف اللي جوه الفولدرات كمان
 
-      - name: Commit and Push Changes
+            - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # بنضيف كل حاجة في الـ output والـ temp (لو الصور لسه هناك)
-          git add output/*.zip --force
+          # 🎯 التعديل هنا: بنضيف الفولدر بالكامل والـ git هيفهم لو فيه ملفات zip
+          git add output/ --force 2>/dev/null || true
           
-          # تنظيف الـ input
           git rm input/*.zip --ignore-unmatch || true
           
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
+            git commit -m "✅ Carousel Generated"
             git pull --rebase origin main
             git push origin main || (git pull --rebase origin main && git push origin main)
           else
             echo "No changes to commit."
           fi
-          
