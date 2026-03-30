@@ -10,75 +10,63 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          ref: main
-
-      # ✅ تأكد إنه شايف آخر نسخة من main
-      - name: Pull Latest Changes
-        run: |
-          git pull origin main
-          echo "📂 Input folder contents:"
-          ls -la input/ || echo "⚠️ input/ is empty"
+          fetch-depth: 0 # مهم جداً عشان الـ rebase يشتغل صح
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Prepare Workspace
-        run: mkdir -p input output temp
-
-      - name: Create .gitignore
+      - name: Install Arabic Fonts & Dependencies
         run: |
-          cat >> .gitignore << 'EOF'
-          node_modules/
-          package-lock.json
-          package.json
-          temp/
-          EOF
-
-      - name: Install Dependencies
-        run: npm install puppeteer adm-zip
+          sudo apt-get update
+          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra fonts-vazirmatn
+          npm install puppeteer adm-zip
 
       - name: Run Conversion Script
         run: node convert.js
 
       - name: Check Generated Files
         run: |
-          echo "📂 Output directory contents:"
-          ls -R output/ || echo "⚠️ Output is empty!"
-          if [ -z "$(ls -A output/ 2>/dev/null)" ]; then
-            echo "❌ No PNG files generated — check convert.js logs"
-            exit 1
-          fi
+          echo "Listing files in output directory:"
+          ls -lh output/ || echo "Output directory is empty!"
 
       - name: Commit and Push Changes
         run: |
+          # إعداد بيانات البوت
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add output/ --force
+          # إضافة الملفات الناتجة (الصور والـ ZIP)
+          git add output/* --force
+          
+          # تنظيف ملفات الـ input
           git rm input/*.zip --ignore-unmatch || true
           
-          if [ -n "$(git diff --cached --name-only)" ]; then
+          # التحقق من وجود تغييرات
+          if [ -n "$(git status --porcelain)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
+            
+            # --- السحر هنا ---
+            # سحب أي تغييرات حصلت في الريبو (زي مسح الصور القديمة اللي n8n عمله)
+            # ووضع التغييرات الجديدة للأكشن "فوقيها" عشان نتجنب الـ Conflict
             git pull --rebase origin main
+            
+            # محاولة الرفع، وإذا فشل يعيد المحاولة مرة واحدة بعد rebase أخير
             git push origin main || (git pull --rebase origin main && git push origin main)
-            echo "✅ Push successful!"
           else
-            echo "ℹ️ No new files in output — skipping commit."
+            echo "No changes to commit, skipping push."
           fi
 
-      - name: Upload Artifact
-        if: always()
+      - name: Upload Artifact (Optional Backup)
         uses: actions/upload-artifact@v4
         with:
-          name: debug-output
-          path: output/
+          name: generated-carousels
+          path: output/*.zip
           retention-days: 1
