@@ -10,7 +10,7 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -23,45 +23,57 @@ jobs:
         with:
           node-version: '22'
 
-      # تأمين وجود الفولدرات عشان السكريبت ميتلخبطش
       - name: Prepare Workspace
         run: mkdir -p input output temp
 
-      - name: Install Dependencies
+      # ✅ إضافة .gitignore يتجاهل node_modules
+      - name: Create .gitignore
         run: |
-          npm install puppeteer adm-zip
+          cat >> .gitignore << 'EOF'
+          node_modules/
+          package-lock.json
+          package.json
+          temp/
+          EOF
+
+      - name: Install Dependencies
+        run: npm install puppeteer adm-zip
 
       - name: Run Conversion Script
-        run: node convert.js
+        run: |
+          node convert.js
+          echo "EXIT_CODE=$?" >> $GITHUB_ENV
 
       - name: Check Generated Files
         run: |
-          echo "Listing files in output directory:"
-          ls -R output/ || echo "Output is empty!"
+          echo "📂 Output directory contents:"
+          ls -R output/ || echo "⚠️ Output is empty!"
+          
+          # ✅ لو output فاضي نوقف الـ workflow هنا
+          if [ -z "$(ls -A output/ 2>/dev/null)" ]; then
+            echo "❌ No PNG files generated — check convert.js logs"
+            exit 1
+          fi
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 🎯 التعديل السحري: إضافة الفولدر كله والسكوت عن الأخطاء لو فاضي
-          git add output/ --force 2>/dev/null || true
-          
-          # تنظيف الـ input عشان ميتراكمش ملفات قديمة
+          # ✅ بنضيف output بس — مش كل حاجة
+          git add output/ --force
           git rm input/*.zip --ignore-unmatch || true
           
-          # التحقق لو فيه تغييرات فعلاً قبل ما يعمل Commit
-          if [ -n "$(git status --porcelain)" ]; then
+          # ✅ الـ check بيبص على output بس مش node_modules
+          if [ -n "$(git diff --cached --name-only)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
-            
-            # محاولة الرفع مع rebase لتفادي الـ Conflicts مع n8n
             git pull --rebase origin main
             git push origin main || (git pull --rebase origin main && git push origin main)
+            echo "✅ Push successful!"
           else
-            echo "No changes detected. Skipping commit."
+            echo "ℹ️ No new files in output — skipping commit."
           fi
 
-      # خطوة إضافية اختيارية: لو عايز تشوف الصور في الـ Artifacts لو الرفع فشل
       - name: Upload Artifact
         if: always()
         uses: actions/upload-artifact@v4
