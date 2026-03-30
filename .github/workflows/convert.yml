@@ -16,17 +16,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # مهم جداً عشان الـ rebase يشتغل صح
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install Arabic Fonts & Dependencies
+      # تأمين وجود الفولدرات عشان السكريبت ميتلخبطش
+      - name: Prepare Workspace
+        run: mkdir -p input output temp
+
+      - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-kacst fonts-arabeyes fonts-noto-core fonts-noto-extra fonts-vazirmatn
           npm install puppeteer adm-zip
 
       - name: Run Conversion Script
@@ -35,38 +37,35 @@ jobs:
       - name: Check Generated Files
         run: |
           echo "Listing files in output directory:"
-          ls -lh output/ || echo "Output directory is empty!"
+          ls -R output/ || echo "Output is empty!"
 
       - name: Commit and Push Changes
         run: |
-          # إعداد بيانات البوت
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إضافة الملفات الناتجة (الصور والـ ZIP)
-          git add output/* --force
+          # 🎯 التعديل السحري: إضافة الفولدر كله والسكوت عن الأخطاء لو فاضي
+          git add output/ --force 2>/dev/null || true
           
-          # تنظيف ملفات الـ input
+          # تنظيف الـ input عشان ميتراكمش ملفات قديمة
           git rm input/*.zip --ignore-unmatch || true
           
-          # التحقق من وجود تغييرات
+          # التحقق لو فيه تغييرات فعلاً قبل ما يعمل Commit
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
             
-            # --- السحر هنا ---
-            # سحب أي تغييرات حصلت في الريبو (زي مسح الصور القديمة اللي n8n عمله)
-            # ووضع التغييرات الجديدة للأكشن "فوقيها" عشان نتجنب الـ Conflict
+            # محاولة الرفع مع rebase لتفادي الـ Conflicts مع n8n
             git pull --rebase origin main
-            
-            # محاولة الرفع، وإذا فشل يعيد المحاولة مرة واحدة بعد rebase أخير
             git push origin main || (git pull --rebase origin main && git push origin main)
           else
-            echo "No changes to commit, skipping push."
+            echo "No changes detected. Skipping commit."
           fi
 
-      - name: Upload Artifact (Optional Backup)
+      # خطوة إضافية اختيارية: لو عايز تشوف الصور في الـ Artifacts لو الرفع فشل
+      - name: Upload Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-carousels
-          path: output/*.zip
+          name: debug-output
+          path: output/
           retention-days: 1
