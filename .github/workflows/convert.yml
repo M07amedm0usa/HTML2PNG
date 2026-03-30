@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '22'
 
-      # 🎯 خطوة إضافية لضمان وجود الفولدرات قبل الشغل
+      # تأمين وجود الفولدرات عشان السكريبت ميتلخبطش
       - name: Prepare Workspace
         run: mkdir -p input output temp
 
@@ -37,22 +37,35 @@ jobs:
       - name: Check Generated Files
         run: |
           echo "Listing files in output directory:"
-          ls -R output/ # الـ -R هتخلينا نشوف اللي جوه الفولدرات كمان
+          ls -R output/ || echo "Output is empty!"
 
-            - name: Commit and Push Changes
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 🎯 التعديل هنا: بنضيف الفولدر بالكامل والـ git هيفهم لو فيه ملفات zip
+          # 🎯 التعديل السحري: إضافة الفولدر كله والسكوت عن الأخطاء لو فاضي
           git add output/ --force 2>/dev/null || true
           
+          # تنظيف الـ input عشان ميتراكمش ملفات قديمة
           git rm input/*.zip --ignore-unmatch || true
           
+          # التحقق لو فيه تغييرات فعلاً قبل ما يعمل Commit
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "✅ Carousel Generated"
+            git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
+            
+            # محاولة الرفع مع rebase لتفادي الـ Conflicts مع n8n
             git pull --rebase origin main
             git push origin main || (git pull --rebase origin main && git push origin main)
           else
-            echo "No changes to commit."
+            echo "No changes detected. Skipping commit."
           fi
+
+      # خطوة إضافية اختيارية: لو عايز تشوف الصور في الـ Artifacts لو الرفع فشل
+      - name: Upload Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output
+          path: output/
+          retention-days: 1
