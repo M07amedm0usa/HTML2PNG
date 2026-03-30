@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer'); // تم التعديل لـ const سمول
+const puppeteer = require('puppeteer'); 
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
@@ -88,10 +88,8 @@ const AdmZip = require('adm-zip');
       // دمج ستايل الخطوط + ستايل إصلاح الـ RTL قبل قفلة الـ head
       htmlContent = htmlContent.replace(/<\/head>/i, `${fontStyle}\n${rtlFixStyle}\n</head>`);
 
-      // لو ملف عربي، نمسح dir="rtl" من الـ html عشان الـ CSS الجديد يشتغل صح
-      if (file.includes('_ar_')) {
-        htmlContent = htmlContent.replace(/dir=["']rtl["']/gi, '');
-      }
+      // 🎯 التعديل هنا: مسح الـ if وتطبيق التعديل على كل الملفات مباشرة عشان كلها بقت عربي
+      htmlContent = htmlContent.replace(/dir=["']rtl["']/gi, '');
 
       fs.writeFileSync(filePath, htmlContent, 'utf8');
 
@@ -134,7 +132,7 @@ const AdmZip = require('adm-zip');
     outZip.writeZip(`output/${zipName}.zip`);
     console.log(`📦 ${zipName}.zip جاهز في مجلد output`);
     
-    // إضافة بسيطة: مسح ملفات الـ HTML المفكوكة عشان جيت هاب ميرفعهاش، لكن الصور الـ PNG هتفضل زي ما هي!
+    // مسح ملفات الـ HTML المفكوكة عشان جيت هاب ميرفعهاش، لكن الصور الـ PNG هتفضل زي ما هي!
     if (fs.existsSync(extractDir)) {
       fs.rmSync(extractDir, { recursive: true, force: true });
     }
@@ -142,4 +140,4 @@ const AdmZip = require('adm-zip');
 
   await browser.close();
 })();
- 
+          
