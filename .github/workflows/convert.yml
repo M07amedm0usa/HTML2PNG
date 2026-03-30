@@ -17,6 +17,14 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          ref: main
+
+      # ✅ تأكد إنه شايف آخر نسخة من main
+      - name: Pull Latest Changes
+        run: |
+          git pull origin main
+          echo "📂 Input folder contents:"
+          ls -la input/ || echo "⚠️ input/ is empty"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,7 +34,6 @@ jobs:
       - name: Prepare Workspace
         run: mkdir -p input output temp
 
-      # ✅ إضافة .gitignore يتجاهل node_modules
       - name: Create .gitignore
         run: |
           cat >> .gitignore << 'EOF'
@@ -40,16 +47,12 @@ jobs:
         run: npm install puppeteer adm-zip
 
       - name: Run Conversion Script
-        run: |
-          node convert.js
-          echo "EXIT_CODE=$?" >> $GITHUB_ENV
+        run: node convert.js
 
       - name: Check Generated Files
         run: |
           echo "📂 Output directory contents:"
           ls -R output/ || echo "⚠️ Output is empty!"
-          
-          # ✅ لو output فاضي نوقف الـ workflow هنا
           if [ -z "$(ls -A output/ 2>/dev/null)" ]; then
             echo "❌ No PNG files generated — check convert.js logs"
             exit 1
@@ -60,11 +63,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # ✅ بنضيف output بس — مش كل حاجة
           git add output/ --force
           git rm input/*.zip --ignore-unmatch || true
           
-          # ✅ الـ check بيبص على output بس مش node_modules
           if [ -n "$(git diff --cached --name-only)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
             git pull --rebase origin main
