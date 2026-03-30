@@ -1,4 +1,4 @@
-Const puppeteer = require('puppeteer'); // تم التعديل لـ const سمول
+const puppeteer = require('puppeteer'); // تم التعديل لـ const سمول
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
