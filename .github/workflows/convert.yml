@@ -44,8 +44,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 🎯 التعديل السحري: إضافة الفولدر كله والسكوت عن الأخطاء لو فاضي
-          git add output/ --force 2>/dev/null || true
+          # 🎯 التعديل السحري: إجبار جيت هاب يضيف ملفات الـ ZIP وفولدر الصور
+          git add output/ --force
+          git add output/*.zip --force 2>/dev/null || true
           
           # تنظيف الـ input عشان ميتراكمش ملفات قديمة
           git rm input/*.zip --ignore-unmatch || true
@@ -54,9 +55,9 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "✅ Carousel Generated: $(date +'%Y-%m-%d %H:%M')"
             
-            # محاولة الرفع مع rebase لتفادي الـ Conflicts مع n8n
-            git pull --rebase origin main
-            git push origin main || (git pull --rebase origin main && git push origin main)
+            # سحب التعديلات بهدوء لتفادي الـ Conflicts مع n8n، ثم الرفع
+            git pull --rebase origin main || true
+            git push origin main
           else
             echo "No changes detected. Skipping commit."
           fi
@@ -69,3 +70,4 @@ jobs:
           name: debug-output
           path: output/
           retention-days: 1
+          
